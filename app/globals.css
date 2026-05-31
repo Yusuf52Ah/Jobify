@@ -1,0 +1,50 @@
+@import "tailwindcss";
+
+:root {
+  --bg-paper: #faf6f0;
+  --surface-sand: #f2e8d9;
+  --surface-card: #f7efe4;
+  --text-ink: #2c1a0e;
+  --brand-terra: #c1440e;
+  --brand-gold: #d4a853;
+  --border-espresso: #2c1a0e;
+  --shadow-warm: 0 24px 80px rgba(193, 80, 23, 0.12);
+  --font-body: var(--font-dm-sans);
+  --font-heading: var(--font-playfair-display);
+}
+
+@theme inline {
+  --font-sans: var(--font-body);
+}
+
+body {
+  min-height: 100vh;
+  margin: 0;
+  background: var(--bg-paper);
+  color: var(--text-ink);
+  font-family: var(--font-body), ui-sans-serif, system-ui, sans-serif;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-family: var(--font-heading), Georgia, serif;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+::selection {
+  background: rgba(209, 147, 83, 0.28);
+}
