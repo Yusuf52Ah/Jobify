@@ -1,12 +1,13 @@
 "use client";
 
-/* eslint-disable react/no-unescaped-entities, @next/next/no-img-element */
+/* eslint-disable react/no-unescaped-entities */
 
 import React, { useEffect, useState } from "react";
 import { onAuthStateChanged, signOut, User } from "firebase/auth";
 import { auth } from "../../lib/firebase";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { UserAvatar } from "../../components/UserAvatar";
 
 export default function DashboardPage() {
   const [user, setUser] = useState<User | null>(null);
@@ -31,9 +32,10 @@ export default function DashboardPage() {
     <main className="min-h-screen bg-[#FAF6F0] px-6 py-12 text-[#2C1A0E]">
       <div className="mx-auto max-w-3xl rounded-[24px] border border-[#D4A853]/15 bg-[#F2E8D9] p-10 shadow-[0_24px_80px_rgba(193,80,23,0.12)]">
         <div className="flex flex-wrap items-center gap-5">
-          <img
-            src={user.photoURL || "/avatar.svg"}
+          <UserAvatar
+            user={user}
             alt={user.displayName || user.email || "Profil"}
+            size={80}
             className="h-20 w-20 rounded-full border-2 border-[#D4A853] bg-[#FAF6F0] object-cover p-1"
           />
           <div>

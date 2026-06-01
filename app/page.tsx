@@ -1,10 +1,21 @@
 "use client";
 
-/* eslint-disable react-hooks/set-state-in-effect, react/no-unescaped-entities, @next/next/no-img-element */
+/* eslint-disable react-hooks/set-state-in-effect, react/no-unescaped-entities */
 
 import React, { useEffect, useMemo, useState } from "react";
 import { onAuthStateChanged, signOut, User } from "firebase/auth";
-import { auth } from "../lib/firebase";
+import {
+  addDoc,
+  collection,
+  deleteDoc,
+  doc,
+  onSnapshot,
+  orderBy,
+  query,
+  serverTimestamp,
+} from "firebase/firestore";
+import { auth, db } from "../lib/firebase";
+import { UserAvatar } from "../components/UserAvatar";
 
 type Job = {
   id: string;
@@ -17,6 +28,8 @@ type Job = {
   description: string;
 };
 
+type JobDocument = Omit<Job, "id">;
+
 const emptyJob: Omit<Job, "id"> = {
   title: "",
   company: "",
@@ -27,19 +40,21 @@ const emptyJob: Omit<Job, "id"> = {
   description: "",
 };
 
-function createId(title: string) {
-  const slug = title
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9\s-]/g, "")
-    .replace(/\s+/g, "-")
-    .replace(/-+/g, "-");
-
-  return `${slug || "job"}-${Date.now()}`;
-}
-
 function getUserName(user: User | null) {
   return user?.displayName || user?.email?.split("@")[0] || "Profil";
+}
+
+function parseJobDocument(id: string, data: Partial<JobDocument>): Job {
+  return {
+    id,
+    title: data.title || "",
+    company: data.company || "",
+    location: data.location || "",
+    type: data.type || "",
+    salary: data.salary || "",
+    telegram: data.telegram || "",
+    description: data.description || "",
+  };
 }
 
 export default function Home() {
@@ -59,20 +74,24 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    const saved = window.localStorage.getItem("jobifyJobs");
-    if (!saved) return;
+    const jobsQuery = query(collection(db, "jobs"), orderBy("createdAt", "desc"));
+    const unsubscribe = onSnapshot(
+      jobsQuery,
+      (snapshot) => {
+        setJobs(
+          snapshot.docs.map((jobDoc) =>
+            parseJobDocument(jobDoc.id, jobDoc.data() as Partial<JobDocument>),
+          ),
+        );
+      },
+      (error) => {
+        console.error("Firestore jobs subscription error", error);
+        setJobMessage("E'lonlarni yuklashda xatolik yuz berdi.");
+      },
+    );
 
-    try {
-      const parsed = JSON.parse(saved);
-      setJobs(Array.isArray(parsed) ? parsed : []);
-    } catch {
-      setJobs([]);
-    }
+    return unsubscribe;
   }, []);
-
-  useEffect(() => {
-    window.localStorage.setItem("jobifyJobs", JSON.stringify(jobs));
-  }, [jobs]);
 
   useEffect(() => {
     const saved = window.localStorage.getItem("jobifySavedJobs");
@@ -137,8 +156,8 @@ export default function Home() {
     );
   }
 
-  function deleteJob(id: string) {
-    setJobs((current) => current.filter((job) => job.id !== id));
+  async function deleteJob(id: string) {
+    await deleteDoc(doc(db, "jobs", id));
     setSavedJobs((current) => current.filter((savedId) => savedId !== id));
     if (selectedJob?.id === id) closeJob();
   }
@@ -149,7 +168,7 @@ export default function Home() {
     alert("So'rovingiz qabul qilindi. Tez orada bog'lanamiz.");
   }
 
-  function handleAddJob(e: React.FormEvent<HTMLFormElement>) {
+  async function handleAddJob(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
 
     const trimmedJob = {
@@ -167,9 +186,18 @@ export default function Home() {
       return;
     }
 
-    setJobs([{ id: createId(trimmedJob.title), ...trimmedJob }, ...jobs]);
-    setNewJob(emptyJob);
-    setJobMessage("Yangi ish e'loni qo'shildi.");
+    try {
+      await addDoc(collection(db, "jobs"), {
+        ...trimmedJob,
+        createdAt: serverTimestamp(),
+        createdBy: user?.uid || null,
+      });
+      setNewJob(emptyJob);
+      setJobMessage("Yangi ish e'loni hammaga qo'shildi.");
+    } catch (error) {
+      console.error("Firestore add job error", error);
+      setJobMessage("E'lonni qo'shishda xatolik yuz berdi.");
+    }
   }
 
   return (
@@ -207,9 +235,10 @@ export default function Home() {
                     className="inline-flex h-12 w-12 overflow-hidden rounded-full border-2 border-[#D4A853] bg-[#FAF6F0] p-0.5 transition hover:scale-105"
                     href="/dashboard"
                   >
-                    <img
-                      src={user.photoURL || "/avatar.svg"}
+                    <UserAvatar
+                      user={user}
                       alt={getUserName(user)}
+                      size={48}
                       className="h-full w-full rounded-full object-cover"
                     />
                   </a>
@@ -236,7 +265,7 @@ export default function Home() {
                 Ish e'lonlarini o'zingiz qo'shing, qidiring va saqlab boring.
               </h1>
               <p className="mt-8 max-w-xl text-lg leading-8 text-[#2C1A0E]/80">
-                Jobify endi tayyor statik ro'yxatga bog'lanmaydi. Siz qo'shgan e'lonlar brauzeringizda saqlanadi va qidiruv darhol ishlaydi.
+                Jobify endi tayyor statik ro'yxatga bog'lanmaydi. Siz qo'shgan e'lonlar umumiy bazada saqlanadi va hammada bir xil ko'rinadi.
               </p>
 
               <div className="mt-10 flex flex-wrap gap-4">
@@ -329,7 +358,7 @@ export default function Home() {
               {filteredJobs.length === 0 && (
                 <div className="rounded-[18px] border border-[#2C1A0E]/10 bg-[#F7EFE4] p-8 text-[#2C1A0E]/75">
                   <h3 className="text-xl font-semibold text-[#2C1A0E]">Hozircha e'lon yo'q</h3>
-                  <p className="mt-3 text-sm leading-6">Pastdagi forma orqali birinchi ish e'lonini qo'shing. Qo'shilgan e'lonlar shu qurilmada saqlanadi.</p>
+                  <p className="mt-3 text-sm leading-6">Pastdagi forma orqali birinchi ish e'lonini qo'shing. Qo'shilgan e'lonlar barcha foydalanuvchilarda ko'rinadi.</p>
                   <button onClick={() => scrollToId("add-job")} className="mt-5 rounded-[12px] bg-[#2C1A0E] px-5 py-3 text-sm font-semibold text-[#F2E8D9]">
                     Birinchi e'lonni qo'shish
                   </button>
