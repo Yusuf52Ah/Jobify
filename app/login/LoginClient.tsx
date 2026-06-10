@@ -6,6 +6,7 @@ import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { auth, googleProvider } from "../../lib/firebase";
+import { JobifyLogo } from "../../components/JobifyLogo";
 import {
   getRedirectResult,
   signInWithEmailAndPassword,
@@ -93,6 +94,13 @@ export function LoginClient() {
       <div className="mx-auto grid max-w-6xl gap-8 lg:grid-cols-[0.95fr_1.05fr] lg:items-start">
         <aside className="space-y-6">
           <div className="jobify-panel p-8">
+            <div className="flex items-center gap-4">
+              <JobifyLogo size={96} className="h-24 w-24 bg-[rgba(255,250,244,0.9)] p-2" />
+              <div>
+                <p className="jobify-eyebrow">Jobify</p>
+                <p className="text-sm text-[var(--text-muted)]">Ish izlash va e'lonlar markazi</p>
+              </div>
+            </div>
             <p className="jobify-eyebrow">Kirish</p>
             <h1 className="mt-4 text-4xl leading-tight sm:text-5xl">
               Hisobingizga kiring va qidiruvni davom ettiring.

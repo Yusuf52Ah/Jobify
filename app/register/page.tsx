@@ -6,6 +6,7 @@ import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { auth, googleProvider } from "../../lib/firebase";
+import { JobifyLogo } from "../../components/JobifyLogo";
 import {
   createUserWithEmailAndPassword,
   getRedirectResult,
@@ -86,6 +87,13 @@ export default function RegisterPage() {
     <main className="jobify-shell px-6 py-8">
       <div className="mx-auto grid max-w-6xl gap-8 lg:grid-cols-[1.08fr_0.92fr] lg:items-start">
         <section className="jobify-panel p-8 sm:p-10">
+          <div className="flex items-center gap-4">
+            <JobifyLogo size={96} className="h-24 w-24 bg-[rgba(255,250,244,0.9)] p-2" />
+            <div>
+              <p className="jobify-eyebrow">Jobify</p>
+              <p className="text-sm text-[var(--text-muted)]">O'zbekistondagi ish e'lonlari platformasi</p>
+            </div>
+          </div>
           <p className="jobify-eyebrow">Hisob yaratish</p>
           <p className="mt-3 text-sm font-medium text-[var(--text-muted)]">
             5 yillik HR tajribasi bilan shakllangan, sodda va ishonchli ro'yxatdan o'tish oqimi.

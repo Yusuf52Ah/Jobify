@@ -17,6 +17,7 @@ import {
 } from "firebase/firestore";
 import { auth, db } from "../lib/firebase";
 import { isAdminEmail } from "../lib/admin";
+import { JobifyLogo } from "../components/JobifyLogo";
 import { UserAvatar } from "../components/UserAvatar";
 
 type TimestampLike = { toDate?: () => Date } | Date | string | number | null | undefined;
@@ -315,9 +316,7 @@ export default function Home() {
             </nav>
 
             <div className="order-first flex items-center gap-3">
-              <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[var(--text-ink)] text-sm font-semibold uppercase text-[#fff6ec]">
-                J
-              </span>
+              <JobifyLogo size={76} className="h-20 w-20 bg-[rgba(255,250,244,0.88)] p-1.5" />
               <div>
                 <p className="text-sm font-semibold uppercase tracking-[0.18em]">Jobify</p>
                 <p className="text-xs uppercase tracking-[0.18em] text-[var(--text-muted)]">
