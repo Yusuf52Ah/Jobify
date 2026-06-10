@@ -1,23 +1,39 @@
 import type { Metadata } from "next";
-import { DM_Sans, Playfair_Display } from "next/font/google";
 import "./globals.css";
 
-const dmSans = DM_Sans({
-  variable: "--font-dm-sans",
-  subsets: ["latin"],
-  weight: ["400", "500", "700"],
-});
-
-const playfair = Playfair_Display({
-  variable: "--font-playfair-display",
-  subsets: ["latin"],
-  weight: ["600", "700"],
-});
-
 export const metadata: Metadata = {
-  title: "Jobify.uz — O‘zbekistonda ishonchli ish portali",
+  metadataBase: new URL("https://jobify.uz"),
+  title: {
+    default: "Jobify",
+    template: "%s | Jobify",
+  },
   description:
-    "O‘zbekistonga mo‘ljallangan iliq editorial ish portali: tanlab olingan e'lonlar, ishonchli ish beruvchilar va professionallar uchun dizayn.",
+    "O'zbekistondagi ish izlovchilar va ish beruvchilar uchun sodda, ishonchli va professional ish platformasi.",
+  applicationName: "Jobify",
+  keywords: ["Jobify", "ish topish", "vakansiya", "ish beruvchi", "O'zbekiston"],
+  authors: [{ name: "Jobify" }],
+  creator: "Jobify",
+  publisher: "Jobify",
+  formatDetection: {
+    email: false,
+    address: false,
+    telephone: false,
+  },
+  openGraph: {
+    title: "Jobify",
+    description:
+      "O'zbekiston uchun qulay va ishonchli ish e'lonlari platformasi.",
+    url: "/",
+    siteName: "Jobify",
+    type: "website",
+    locale: "uz_UZ",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Jobify",
+    description:
+      "O'zbekiston uchun qulay va ishonchli ish e'lonlari platformasi.",
+  },
 };
 
 export default function RootLayout({
@@ -26,10 +42,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html
-      lang="en"
-      className={`${dmSans.variable} ${playfair.variable} h-full antialiased`}
-    >
+    <html lang="uz" className="h-full antialiased">
       <body className="min-h-full flex flex-col">{children}</body>
     </html>
   );

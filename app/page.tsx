@@ -2,6 +2,7 @@
 
 /* eslint-disable react-hooks/set-state-in-effect, react/no-unescaped-entities */
 
+import Link from "next/link";
 import React, { useEffect, useMemo, useState } from "react";
 import { onAuthStateChanged, signOut, User } from "firebase/auth";
 import {
@@ -15,7 +16,10 @@ import {
   serverTimestamp,
 } from "firebase/firestore";
 import { auth, db } from "../lib/firebase";
+import { isAdminEmail } from "../lib/admin";
 import { UserAvatar } from "../components/UserAvatar";
+
+type TimestampLike = { toDate?: () => Date } | Date | string | number | null | undefined;
 
 type Job = {
   id: string;
@@ -26,6 +30,8 @@ type Job = {
   salary: string;
   telegram: string;
   description: string;
+  createdAt?: TimestampLike;
+  highlighted?: boolean;
 };
 
 type JobDocument = Omit<Job, "id">;
@@ -39,6 +45,25 @@ const emptyJob: Omit<Job, "id"> = {
   telegram: "",
   description: "",
 };
+
+const platformNotes = [
+  {
+    title: "Aniq ma'lumot",
+    text: "Ish haqi, joylashuv va aloqa bir ko'rishda ko'rinadi.",
+  },
+  {
+    title: "Tezkor saqlash",
+    text: "Qiziqqan e'lonni keyinroq ko'rish uchun belgilab qo'yasiz.",
+  },
+  {
+    title: "Ish beruvchi oqimi",
+    text: "E'lon qo'shish formasi sodda va tushunarli bo'lib qoladi.",
+  },
+  {
+    title: "Narx",
+    text: "Har bir yangi e'lon 20 000 so'm.",
+  },
+];
 
 function getUserName(user: User | null) {
   return user?.displayName || user?.email?.split("@")[0] || "Profil";
@@ -54,7 +79,47 @@ function parseJobDocument(id: string, data: Partial<JobDocument>): Job {
     salary: data.salary || "",
     telegram: data.telegram || "",
     description: data.description || "",
+    createdAt: data.createdAt ?? null,
+    highlighted: Boolean(data.highlighted),
   };
+}
+
+function resolveJobDate(job: Job) {
+  const value = job.createdAt;
+
+  if (!value) return null;
+  if (value instanceof Date) return value;
+  if (typeof value === "string" || typeof value === "number") return new Date(value);
+  if (typeof value === "object" && typeof value.toDate === "function") return value.toDate();
+
+  return null;
+}
+
+function formatPostedAt(job: Job) {
+  const date = resolveJobDate(job);
+
+  if (!date || Number.isNaN(date.getTime())) {
+    return "Yangi";
+  }
+
+  const diffDays = Math.floor((Date.now() - date.getTime()) / (1000 * 60 * 60 * 24));
+
+  if (diffDays <= 0) return "Bugun";
+  if (diffDays === 1) return "Kecha";
+  if (diffDays < 7) return `${diffDays} kun oldin`;
+
+  return new Intl.DateTimeFormat("uz-UZ", {
+    day: "numeric",
+    month: "short",
+  }).format(date);
+}
+
+function isFreshJob(job: Job) {
+  const date = resolveJobDate(job);
+  if (!date || Number.isNaN(date.getTime())) return false;
+
+  const diffDays = Math.floor((Date.now() - date.getTime()) / (1000 * 60 * 60 * 24));
+  return diffDays < 7;
 }
 
 export default function Home() {
@@ -66,10 +131,12 @@ export default function Home() {
   const [showEmployerModal, setShowEmployerModal] = useState(false);
   const [newJob, setNewJob] = useState<Omit<Job, "id">>(emptyJob);
   const [jobMessage, setJobMessage] = useState<string | null>(null);
+  const [employerMessage, setEmployerMessage] = useState<string | null>(null);
   const [user, setUser] = useState<User | null>(auth.currentUser);
+  const isAdmin = isAdminEmail(user?.email);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (u) => setUser(u));
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => setUser(currentUser));
     return unsubscribe;
   }, []);
 
@@ -95,6 +162,7 @@ export default function Home() {
 
   useEffect(() => {
     const saved = window.localStorage.getItem("jobifySavedJobs");
+
     if (!saved) return;
 
     try {
@@ -127,13 +195,18 @@ export default function Home() {
     [jobs, savedJobs],
   );
 
+  const freshJobCount = useMemo(
+    () => jobs.filter((job) => isFreshJob(job)).length,
+    [jobs],
+  );
+
   const stats = useMemo(
     () => [
       { label: "Faol e'lonlar", value: String(jobs.length) },
       { label: "Saqlangan ishlar", value: String(savedJobList.length) },
-      { label: "Qidiruv natijasi", value: String(filteredJobs.length) },
+      { label: "Yangi joylanganlar", value: String(freshJobCount) },
     ],
-    [filteredJobs.length, jobs.length, savedJobList.length],
+    [freshJobCount, jobs.length, savedJobList.length],
   );
 
   function scrollToId(id: string) {
@@ -159,13 +232,16 @@ export default function Home() {
   async function deleteJob(id: string) {
     await deleteDoc(doc(db, "jobs", id));
     setSavedJobs((current) => current.filter((savedId) => savedId !== id));
-    if (selectedJob?.id === id) closeJob();
+
+    if (selectedJob?.id === id) {
+      closeJob();
+    }
   }
 
   function submitEmployerRequest(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setShowEmployerModal(false);
-    alert("So'rovingiz qabul qilindi. Tez orada bog'lanamiz.");
+    setEmployerMessage("So'rovingiz qabul qilindi. Jamoamiz tez orada bog'lanadi.");
   }
 
   async function handleAddJob(e: React.FormEvent<HTMLFormElement>) {
@@ -193,7 +269,7 @@ export default function Home() {
         createdBy: user?.uid || null,
       });
       setNewJob(emptyJob);
-      setJobMessage("Yangi ish e'loni hammaga qo'shildi.");
+      setJobMessage("Yangi ish e'loni muvaffaqiyatli qo'shildi.");
     } catch (error) {
       console.error("Firestore add job error", error);
       setJobMessage("E'lonni qo'shishda xatolik yuz berdi.");
@@ -201,38 +277,62 @@ export default function Home() {
   }
 
   return (
-    <div className="min-h-screen bg-[#FAF6F0] text-[#2C1A0E]">
-      <div className="mx-auto max-w-[1400px] px-6 pb-20 pt-8">
-        <header className="relative overflow-hidden rounded-[24px] border border-[#D4A853]/15 bg-[#F2E8D9] shadow-[0_20px_70px_rgba(193,80,23,0.1)]">
-          <div className="flex flex-wrap items-center justify-between gap-6 border-b border-[#2C1A0E]/10 px-8 py-6">
-            <nav className="order-2 flex flex-wrap items-center gap-6 text-sm font-medium uppercase text-[#2C1A0E]">
-              <a className="relative hover:text-[#C1440E]" href="#jobs" onClick={(e) => { e.preventDefault(); scrollToId("jobs"); }}>
+    <div className="jobify-shell px-6 py-8 pb-20">
+      <div className="mx-auto max-w-[1400px]">
+        <header className="jobify-panel overflow-hidden">
+          <div className="flex flex-wrap items-center justify-between gap-6 border-b border-[var(--line)] px-8 py-6">
+            <nav className="order-2 flex flex-wrap items-center gap-6 text-sm font-semibold uppercase tracking-[0.14em] text-[var(--text-ink)]">
+              <a
+                className="transition hover:text-[var(--brand)]"
+                href="#jobs"
+                onClick={(e) => {
+                  e.preventDefault();
+                  scrollToId("jobs");
+                }}
+              >
                 Ishlar
-                <span className="absolute -bottom-2 left-0 h-0.5 w-8 bg-[#D4A853]" />
               </a>
-              <a className="hover:text-[#C1440E]" href="#employers" onClick={(e) => { e.preventDefault(); scrollToId("employers"); }}>
+              <a
+                className="transition hover:text-[var(--brand)]"
+                href="#employers"
+                onClick={(e) => {
+                  e.preventDefault();
+                  scrollToId("employers");
+                }}
+              >
                 Ish beruvchilar
               </a>
-              <a className="hover:text-[#C1440E]" href="#insights" onClick={(e) => { e.preventDefault(); scrollToId("insights"); }}>
+              <a
+                className="transition hover:text-[var(--brand)]"
+                href="#insights"
+                onClick={(e) => {
+                  e.preventDefault();
+                  scrollToId("insights");
+                }}
+              >
                 Tahlillar
               </a>
             </nav>
 
             <div className="order-first flex items-center gap-3">
-              <span className="flex h-11 w-11 items-center justify-center rounded-md bg-[#2C1A0E] text-sm font-semibold uppercase text-[#F2E8D9]">J</span>
+              <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[var(--text-ink)] text-sm font-semibold uppercase text-[#fff6ec]">
+                J
+              </span>
               <div>
-                <p className="text-sm uppercase text-[#2C1A0E]/80">Jobify</p>
-                <p className="text-xs uppercase text-[#2C1A0E]/50">O'zbek ish platformasi</p>
+                <p className="text-sm font-semibold uppercase tracking-[0.18em]">Jobify</p>
+                <p className="text-xs uppercase tracking-[0.18em] text-[var(--text-muted)]">
+                  O'zbek ish platformasi
+                </p>
               </div>
             </div>
 
             <div className="flex items-center gap-3">
               {user ? (
                 <>
-                  <a
+                  <Link
                     aria-label="Profil"
                     title={getUserName(user)}
-                    className="inline-flex h-12 w-12 overflow-hidden rounded-full border-2 border-[#D4A853] bg-[#FAF6F0] p-0.5 transition hover:scale-105"
+                    className="inline-flex h-12 w-12 overflow-hidden rounded-full border border-[var(--line)] bg-[rgba(255,250,244,0.88)] p-0.5 transition hover:scale-105"
                     href="/dashboard"
                   >
                     <UserAvatar
@@ -241,64 +341,107 @@ export default function Home() {
                       size={48}
                       className="h-full w-full rounded-full object-cover"
                     />
-                  </a>
+                  </Link>
                   <button
-                    onClick={async () => { await signOut(auth); }}
-                    className="rounded-full border border-[#2C1A0E]/20 px-5 py-3 text-sm font-semibold transition hover:border-[#C1440E] hover:text-[#C1440E]"
+                    onClick={async () => {
+                      await signOut(auth);
+                    }}
+                    className="rounded-full border border-[var(--line)] px-5 py-3 text-sm font-semibold transition hover:border-[var(--brand)] hover:text-[var(--brand)]"
                   >
                     Chiqish
                   </button>
                 </>
               ) : (
                 <>
-                  <a className="rounded-full border border-[#2C1A0E]/20 px-5 py-3 text-sm font-semibold transition hover:border-[#C1440E] hover:text-[#C1440E]" href="/login">Kirish</a>
-                  <a className="rounded-full bg-[#2C1A0E] px-5 py-3 text-sm font-semibold text-[#F2E8D9] transition hover:bg-[#C1440E]" href="/register">Ro'yxatdan o'tish</a>
+                  <Link
+                    className="rounded-full border border-[var(--line)] px-5 py-3 text-sm font-semibold transition hover:border-[var(--brand)] hover:text-[var(--brand)]"
+                    href="/login"
+                  >
+                    Kirish
+                  </Link>
+                  <Link
+                    className="rounded-full bg-[var(--text-ink)] px-5 py-3 text-sm font-semibold text-[#fff6ec] transition hover:bg-[var(--brand)]"
+                    href="/register"
+                  >
+                    Ro'yxatdan o'tish
+                  </Link>
                 </>
               )}
             </div>
           </div>
 
-          <div className="grid gap-12 px-8 py-12 lg:grid-cols-[1.35fr_1fr] lg:items-end">
+          <div className="grid gap-10 px-8 py-12 lg:grid-cols-[1.25fr_0.95fr] lg:items-end">
             <div className="max-w-2xl">
-              <p className="mb-4 text-sm uppercase text-[#2C1A0E]/70">O'zbekistonda karyera maydoni</p>
-              <h1 className="max-w-3xl text-5xl font-semibold leading-tight text-[#2C1A0E] sm:text-6xl">
-                Ish e'lonlarini o'zingiz qo'shing, qidiring va saqlab boring.
+              <p className="jobify-eyebrow">O'zbekistonda karyera maydoni</p>
+              <h1 className="mt-5 max-w-3xl text-5xl font-semibold leading-tight sm:text-6xl">
+                Ish e'lonlarini o'zingiz qo'shing, qidiring va tartibli saqlang.
               </h1>
-              <p className="mt-8 max-w-xl text-lg leading-8 text-[#2C1A0E]/80">
-                Jobify endi tayyor statik ro'yxatga bog'lanmaydi. Siz qo'shgan e'lonlar umumiy bazada saqlanadi va hammada bir xil ko'rinadi.
+              <p className="jobify-lead mt-8 max-w-xl text-lg">
+                Jobify tayyor statik ro'yxat emas. Siz qo'shgan e'lonlar umumiy
+                bazada saqlanadi va barcha foydalanuvchilarda bir xil ko'rinadi.
               </p>
 
+              <div className="mt-8 flex flex-wrap gap-3">
+                <span className="jobify-chip">Email va Google kirish</span>
+                <span className="jobify-chip">Ish beruvchi oqimi</span>
+                <span className="jobify-chip">Saqlangan e'lonlar</span>
+                <span className="jobify-chip">1 e'lon: 20 000 so'm</span>
+              </div>
+
               <div className="mt-10 flex flex-wrap gap-4">
-                <button onClick={() => scrollToId("add-job")} className="inline-flex items-center justify-center rounded-[12px] bg-[#C1440E] px-8 py-4 text-sm font-semibold uppercase text-[#F2E8D9] transition hover:bg-[#a3360a]">
+                <button
+                  onClick={() => scrollToId("add-job")}
+                  className="jobify-btn-primary"
+                >
                   E'lon qo'shish
                 </button>
-                <button onClick={() => scrollToId("jobs")} className="inline-flex items-center justify-center rounded-[12px] border border-[#2C1A0E] px-8 py-4 text-sm font-semibold uppercase text-[#2C1A0E] transition hover:border-[#C1440E] hover:text-[#C1440E]">
+                <button
+                  onClick={() => scrollToId("jobs")}
+                  className="jobify-btn-secondary"
+                >
                   Ishlarni ko'rish
                 </button>
               </div>
 
               <div className="mt-12 grid gap-4 sm:grid-cols-3">
                 {stats.map((stat) => (
-                  <div key={stat.label} className="rounded-[16px] border border-[#2C1A0E]/10 bg-[#F7EFE4] px-5 py-6">
-                    <p className="text-2xl font-semibold text-[#2C1A0E]">{stat.value}</p>
-                    <p className="mt-2 text-sm uppercase text-[#2C1A0E]/70">{stat.label}</p>
+                  <div key={stat.label} className="jobify-stat">
+                    <p className="text-2xl font-semibold text-[var(--text-ink)]">
+                      {stat.value}
+                    </p>
+                    <p className="mt-2 text-sm uppercase tracking-[0.14em] text-[var(--text-muted)]">
+                      {stat.label}
+                    </p>
                   </div>
                 ))}
               </div>
             </div>
 
-            <div className="relative overflow-hidden rounded-[24px] border border-[#2C1A0E]/10 bg-[#FAF6F0] p-8 shadow-[var(--shadow-warm)]">
-              <p className="mb-6 text-sm uppercase text-[#2C1A0E]/70">Kengaytirilgan qidiruv</p>
-              <div className="space-y-6">
-                <label className="block text-sm font-semibold uppercase text-[#2C1A0E]/85">
+            <div className="jobify-panel-soft p-8">
+              <p className="jobify-eyebrow">Kengaytirilgan qidiruv</p>
+              <div className="mt-6 space-y-5">
+                <label className="jobify-label">
                   Lavozim
-                  <input value={roleQuery} onChange={(e) => setRoleQuery(e.target.value)} placeholder="Dizayner, HR, dasturchi" className="mt-3 w-full border-4 border-[#2C1A0E] bg-[#FAF6F0] px-4 py-4 text-sm text-[#2C1A0E] outline-none" />
+                  <input
+                    value={roleQuery}
+                    onChange={(e) => setRoleQuery(e.target.value)}
+                    placeholder="Dizayner, HR, dasturchi"
+                    className="jobify-input"
+                  />
                 </label>
-                <label className="block text-sm font-semibold uppercase text-[#2C1A0E]/85">
+                <label className="jobify-label">
                   Joylashuv
-                  <input value={locationQuery} onChange={(e) => setLocationQuery(e.target.value)} placeholder="Toshkent, Samarqand, masofaviy" className="mt-3 w-full border-4 border-[#2C1A0E] bg-[#FAF6F0] px-4 py-4 text-sm text-[#2C1A0E] outline-none" />
+                  <input
+                    value={locationQuery}
+                    onChange={(e) => setLocationQuery(e.target.value)}
+                    placeholder="Toshkent, Samarqand, masofaviy"
+                    className="jobify-input"
+                  />
                 </label>
-                <button onClick={() => scrollToId("jobs")} className="inline-flex w-full items-center justify-center rounded-[12px] bg-[#C1440E] px-6 py-4 text-sm font-semibold uppercase text-[#F2E8D9]">
+                <button
+                  onClick={() => scrollToId("jobs")}
+                  className="jobify-btn-primary w-full"
+                >
                   Qidirish
                 </button>
               </div>
@@ -306,14 +449,16 @@ export default function Home() {
           </div>
         </header>
 
-        <main className="mt-12 grid gap-10 lg:grid-cols-[2.3fr_1fr]">
+        <main className="mt-12 grid gap-10 lg:grid-cols-[2.25fr_1fr]">
           <section id="jobs" className="space-y-8">
             <div className="flex items-start justify-between gap-6">
               <div>
-                <p className="text-sm uppercase text-[#2C1A0E]/70">E'lonlar</p>
-                <h2 className="mt-3 text-3xl font-semibold leading-tight text-[#2C1A0E]">Siz qo'shgan ishlar shu yerda chiqadi.</h2>
+                <p className="jobify-eyebrow">E'lonlar</p>
+                <h2 className="mt-3 text-3xl font-semibold leading-tight">
+                  Siz qo'shgan ishlar shu yerda ko'rinadi.
+                </h2>
               </div>
-              <div className="rounded-[14px] border border-[#D4A853]/20 bg-[#F7EFE4] px-4 py-3 text-sm font-medium uppercase text-[#2C1A0E]/85">
+              <div className="jobify-stat px-4 py-3 text-sm font-semibold uppercase tracking-[0.14em] text-[var(--text-ink)]">
                 {filteredJobs.length} ta natija
               </div>
             </div>
@@ -321,91 +466,203 @@ export default function Home() {
             <div className="space-y-4">
               {filteredJobs.map((job) => {
                 const isSaved = savedJobs.includes(job.id);
+                const postedAt = formatPostedAt(job);
+                const fresh = isFreshJob(job);
 
                 return (
-                  <article key={job.id} className="group overflow-hidden rounded-[20px] border-l-4 border-[#D4A853] bg-[#F2E8D9] p-8 shadow-[0_20px_50px_rgba(44,26,14,0.08)] transition duration-300 hover:-translate-y-1">
+                  <article
+                    key={job.id}
+                    className="overflow-hidden rounded-[1.5rem] border border-[var(--line)] bg-[rgba(255,250,244,0.92)] p-7 shadow-[0_18px_50px_rgba(18,27,36,0.06)] transition duration-300 hover:-translate-y-1"
+                  >
                     <div className="flex flex-wrap items-center justify-between gap-4">
                       <div>
-                        <p className="text-sm uppercase text-[#2C1A0E]/60">{job.company}</p>
-                        <h3 className="mt-3 text-2xl font-semibold text-[#2C1A0E]">{job.title}</h3>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="text-sm uppercase tracking-[0.18em] text-[var(--text-muted)]">
+                            {job.company}
+                          </p>
+                          {fresh ? <span className="jobify-tag">Yangi</span> : null}
+                        </div>
+                        <h3 className="mt-3 text-2xl font-semibold">{job.title}</h3>
                       </div>
-                      <span className="rounded-[12px] border border-[#2C1A0E]/15 bg-[#FAF6F0] px-4 py-2 text-sm font-semibold uppercase text-[#2C1A0E]/85">{job.type}</span>
+                      <span className="rounded-full border border-[var(--line)] bg-[rgba(31,111,109,0.08)] px-4 py-2 text-sm font-semibold uppercase tracking-[0.14em] text-[var(--brand)]">
+                        {job.type}
+                      </span>
                     </div>
 
-                    <div className="mt-6 flex flex-wrap items-center gap-4 text-sm text-[#2C1A0E]/70">
+                    <div className="mt-6 flex flex-wrap items-center gap-4 text-sm text-[var(--text-muted)]">
                       <span>{job.location}</span>
                       <span>{job.salary}</span>
+                      <span>Joylangan: {postedAt}</span>
                     </div>
 
-                    <div className="mt-8 flex flex-wrap items-center justify-between gap-4">
-                      <p className="max-w-xl text-sm text-[#2C1A0E]/70">{job.description}</p>
+                    <div className="mt-7 flex flex-wrap items-center justify-between gap-4">
+                      <p className="max-w-2xl text-sm leading-7 text-[var(--text-muted)]">
+                        {job.description}
+                      </p>
                       <div className="flex flex-wrap gap-3">
-                        <button onClick={() => toggleSavedJob(job.id)} className="rounded-md border border-[#2C1A0E]/20 px-4 py-2 text-sm font-semibold text-[#2C1A0E] hover:border-[#C1440E] hover:text-[#C1440E]">
+                        <button
+                          onClick={() => toggleSavedJob(job.id)}
+                          className="rounded-full border border-[var(--line)] px-4 py-2 text-sm font-semibold transition hover:border-[var(--brand)] hover:text-[var(--brand)]"
+                        >
                           {isSaved ? "Saqlangan" : "Saqlash"}
                         </button>
-                        <button onClick={() => openJob(job)} className="rounded-md bg-[#C1440E] px-4 py-2 text-sm font-semibold text-[#F2E8D9]">
+                        <button
+                          onClick={() => openJob(job)}
+                          className="rounded-full bg-[var(--text-ink)] px-4 py-2 text-sm font-semibold text-[#fff6ec] transition hover:bg-[var(--brand)]"
+                        >
                           Ko'rish
                         </button>
-                        <button onClick={() => deleteJob(job.id)} className="rounded-md border border-[#C1440E]/30 px-4 py-2 text-sm font-semibold text-[#C1440E]">
-                          O'chirish
-                        </button>
+                        {isAdmin ? (
+                          <button
+                            onClick={() => deleteJob(job.id)}
+                            className="rounded-full border border-[rgba(31,111,109,0.24)] px-4 py-2 text-sm font-semibold text-[var(--brand)]"
+                          >
+                            O'chirish
+                          </button>
+                        ) : null}
                       </div>
                     </div>
                   </article>
                 );
               })}
 
-              {filteredJobs.length === 0 && (
-                <div className="rounded-[18px] border border-[#2C1A0E]/10 bg-[#F7EFE4] p-8 text-[#2C1A0E]/75">
-                  <h3 className="text-xl font-semibold text-[#2C1A0E]">Hozircha e'lon yo'q</h3>
-                  <p className="mt-3 text-sm leading-6">Pastdagi forma orqali birinchi ish e'lonini qo'shing. Qo'shilgan e'lonlar barcha foydalanuvchilarda ko'rinadi.</p>
-                  <button onClick={() => scrollToId("add-job")} className="mt-5 rounded-[12px] bg-[#2C1A0E] px-5 py-3 text-sm font-semibold text-[#F2E8D9]">
+              {filteredJobs.length === 0 ? (
+                <div className="jobify-panel-soft p-8 text-[var(--text-muted)]">
+                  <h3 className="text-xl font-semibold text-[var(--text-ink)]">
+                    Hozircha e'lon yo'q
+                  </h3>
+                  <p className="mt-3 text-sm leading-7">
+                    Pastdagi forma orqali birinchi ish e'lonini qo'shing. Qo'shilgan
+                    e'lonlar barcha foydalanuvchilarda ko'rinadi.
+                  </p>
+                  <button
+                    onClick={() => scrollToId("add-job")}
+                    className="mt-5 jobify-btn-primary"
+                  >
                     Birinchi e'lonni qo'shish
                   </button>
                 </div>
-              )}
+              ) : null}
             </div>
           </section>
 
           <aside id="insights" className="space-y-8">
-            <div className="rounded-[24px] border border-[#D4A853]/15 bg-[#F7EFE4] p-8 shadow-[var(--shadow-warm)]">
-              <p className="text-sm uppercase text-[#2C1A0E]/70">Saqlangan ishlar</p>
-              <h3 className="mt-3 text-2xl font-semibold text-[#2C1A0E]">Keyinroq ko'rish uchun</h3>
+            <div className="jobify-panel p-8">
+              <p className="jobify-eyebrow">Saqlangan ishlar</p>
+              <h3 className="mt-3 text-2xl font-semibold">Keyinroq ko'rish uchun</h3>
               <div className="mt-6 space-y-3">
                 {savedJobList.map((job) => (
-                  <button key={job.id} onClick={() => openJob(job)} className="w-full rounded-[14px] bg-[#F2E8D9] p-4 text-left transition hover:bg-[#FAF6F0]">
-                    <span className="block text-sm font-semibold text-[#2C1A0E]">{job.title}</span>
-                    <span className="mt-1 block text-sm text-[#2C1A0E]/70">{job.company}</span>
+                  <button
+                    key={job.id}
+                    onClick={() => openJob(job)}
+                    className="w-full rounded-[1rem] border border-[var(--line)] bg-[rgba(255,250,244,0.72)] p-4 text-left transition hover:border-[var(--brand)] hover:bg-[rgba(31,111,109,0.06)]"
+                  >
+                    <span className="block text-sm font-semibold">{job.title}</span>
+                    <span className="mt-1 block text-sm text-[var(--text-muted)]">
+                      {job.company}
+                    </span>
                   </button>
                 ))}
-                {savedJobList.length === 0 && <p className="text-sm leading-6 text-[#2C1A0E]/70">Yoqtirgan e'lonlaringizni saqlab qo'ysangiz, ular shu yerda chiqadi.</p>}
+                {savedJobList.length === 0 ? (
+                  <p className="text-sm leading-7 text-[var(--text-muted)]">
+                    Yoqtirgan e'lonlaringizni saqlab qo'ysangiz, ular shu yerda
+                    chiqadi.
+                  </p>
+                ) : null}
               </div>
             </div>
 
-            <div id="employers" className="rounded-[24px] border border-[#2C1A0E]/10 bg-[#F2E8D9] p-8 shadow-[0_18px_50px_rgba(44,26,14,0.08)]">
-              <p className="text-sm uppercase text-[#2C1A0E]/70">Ish beruvchi</p>
-              <h3 className="mt-4 text-2xl font-semibold text-[#2C1A0E]">Jamoangiz uchun e'lon joylang</h3>
-              <p className="mt-4 text-sm leading-6 text-[#2C1A0E]/75">Kompaniya haqida aniq ma'lumot, maosh oralig'i va Telegram kontakt qo'shilsa, nomzodlar tezroq murojaat qiladi.</p>
-              <button onClick={() => setShowEmployerModal(true)} className="mt-6 inline-flex items-center gap-2 text-sm font-semibold uppercase text-[#C1440E]">
+            <div id="employers" className="jobify-panel p-8">
+              <p className="jobify-eyebrow">Ish beruvchi</p>
+              <h3 className="mt-4 text-2xl font-semibold">Jamoangiz uchun e'lon joylang</h3>
+              <p className="jobify-lead mt-4 text-sm">
+                Kompaniya haqida aniq ma'lumot, maosh oralig'i va Telegram kontakt
+                qo'shilsa, nomzodlar tezroq murojaat qiladi.
+              </p>
+              <button
+                onClick={() => setShowEmployerModal(true)}
+                className="mt-6 inline-flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.14em] text-[var(--brand)]"
+              >
                 Ish beruvchi kirishini so'rang
               </button>
+              {employerMessage ? (
+                <p className="mt-4 rounded-[1rem] border border-[var(--line)] bg-[rgba(31,111,109,0.08)] px-4 py-4 text-sm text-[var(--text-ink)]">
+                  {employerMessage}
+                </p>
+              ) : null}
             </div>
 
-            <div id="add-job" className="rounded-[24px] border border-[#2C1A0E]/10 bg-[#F7EFE4] p-8 shadow-[var(--shadow-warm)]">
-              <p className="text-sm uppercase text-[#2C1A0E]/70">Yangi ish qo'shish</p>
-              <h3 className="mt-4 text-2xl font-semibold text-[#2C1A0E]">E'loningizni yarating</h3>
+            <div className="jobify-panel p-8">
+              <p className="jobify-eyebrow">Nega bu joy ishlaydi?</p>
+              <div className="mt-6 space-y-4">
+                {platformNotes.map((item) => (
+                  <div key={item.title} className="rounded-[1rem] border border-[var(--line)] bg-[rgba(255,250,244,0.72)] p-4">
+                    <p className="text-sm font-semibold">{item.title}</p>
+                    <p className="mt-2 text-sm leading-7 text-[var(--text-muted)]">
+                      {item.text}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div id="add-job" className="jobify-panel p-8">
+              <p className="jobify-eyebrow">Yangi ish qo'shish</p>
+              <h3 className="mt-4 text-2xl font-semibold">E'loningizni yarating</h3>
+              <div className="mt-4 rounded-[1rem] border border-[var(--line)] bg-[rgba(31,111,109,0.06)] px-4 py-4 text-sm text-[var(--text-muted)]">
+                Har bir yangi e'lon uchun to'lov:{" "}
+                <span className="font-semibold text-[var(--text-ink)]">20 000 so'm</span>.
+                To'lov tasdiqlangach e'lon joylanadi.
+              </div>
               <form onSubmit={handleAddJob} className="mt-6 space-y-4">
-                <input value={newJob.title} onChange={(e) => setNewJob({ ...newJob, title: e.target.value })} placeholder="Lavozim nomi" className="w-full rounded-[14px] border border-[#2C1A0E]/15 bg-[#FAF6F0] px-4 py-3 text-sm text-[#2C1A0E] outline-none" />
-                <input value={newJob.company} onChange={(e) => setNewJob({ ...newJob, company: e.target.value })} placeholder="Kompaniya nomi" className="w-full rounded-[14px] border border-[#2C1A0E]/15 bg-[#FAF6F0] px-4 py-3 text-sm text-[#2C1A0E] outline-none" />
-                <input value={newJob.location} onChange={(e) => setNewJob({ ...newJob, location: e.target.value })} placeholder="Joylashuv" className="w-full rounded-[14px] border border-[#2C1A0E]/15 bg-[#FAF6F0] px-4 py-3 text-sm text-[#2C1A0E] outline-none" />
+                <input
+                  value={newJob.title}
+                  onChange={(e) => setNewJob({ ...newJob, title: e.target.value })}
+                  placeholder="Lavozim nomi"
+                  className="jobify-input"
+                />
+                <input
+                  value={newJob.company}
+                  onChange={(e) => setNewJob({ ...newJob, company: e.target.value })}
+                  placeholder="Kompaniya nomi"
+                  className="jobify-input"
+                />
+                <input
+                  value={newJob.location}
+                  onChange={(e) => setNewJob({ ...newJob, location: e.target.value })}
+                  placeholder="Joylashuv"
+                  className="jobify-input"
+                />
                 <div className="grid gap-4 sm:grid-cols-2">
-                  <input value={newJob.type} onChange={(e) => setNewJob({ ...newJob, type: e.target.value })} placeholder="Ish turi" className="w-full rounded-[14px] border border-[#2C1A0E]/15 bg-[#FAF6F0] px-4 py-3 text-sm text-[#2C1A0E] outline-none" />
-                  <input value={newJob.salary} onChange={(e) => setNewJob({ ...newJob, salary: e.target.value })} placeholder="Maosh" className="w-full rounded-[14px] border border-[#2C1A0E]/15 bg-[#FAF6F0] px-4 py-3 text-sm text-[#2C1A0E] outline-none" />
+                  <input
+                    value={newJob.type}
+                    onChange={(e) => setNewJob({ ...newJob, type: e.target.value })}
+                    placeholder="Ish turi"
+                    className="jobify-input"
+                  />
+                  <input
+                    value={newJob.salary}
+                    onChange={(e) => setNewJob({ ...newJob, salary: e.target.value })}
+                    placeholder="Maosh"
+                    className="jobify-input"
+                  />
                 </div>
-                <input value={newJob.telegram} onChange={(e) => setNewJob({ ...newJob, telegram: e.target.value })} placeholder="Telegram akkaunt: @username" className="w-full rounded-[14px] border border-[#2C1A0E]/15 bg-[#FAF6F0] px-4 py-3 text-sm text-[#2C1A0E] outline-none" />
-                <textarea value={newJob.description} onChange={(e) => setNewJob({ ...newJob, description: e.target.value })} placeholder="Qisqacha ish tavsifi" className="min-h-[120px] w-full rounded-[14px] border border-[#2C1A0E]/15 bg-[#FAF6F0] px-4 py-3 text-sm text-[#2C1A0E] outline-none" />
-                {jobMessage && <p className="text-sm text-[#C1440E]">{jobMessage}</p>}
-                <button type="submit" className="inline-flex w-full items-center justify-center rounded-[14px] bg-[#C1440E] px-4 py-3 text-sm font-semibold uppercase text-[#F2E8D9]">
+                <input
+                  value={newJob.telegram}
+                  onChange={(e) => setNewJob({ ...newJob, telegram: e.target.value })}
+                  placeholder="Telegram akkaunt: @username"
+                  className="jobify-input"
+                />
+                <textarea
+                  value={newJob.description}
+                  onChange={(e) => setNewJob({ ...newJob, description: e.target.value })}
+                  placeholder="Qisqacha ish tavsifi"
+                  className="jobify-input jobify-textarea"
+                />
+                {jobMessage ? (
+                  <p className="text-sm text-[var(--brand)]">{jobMessage}</p>
+                ) : null}
+                <button type="submit" className="jobify-btn-primary w-full">
                   Ish e'lonini qo'shish
                 </button>
               </form>
@@ -413,44 +670,70 @@ export default function Home() {
           </aside>
         </main>
 
-        {selectedJob && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-6">
-            <div className="w-full max-w-xl rounded-2xl bg-[#FAF6F0] p-8 shadow-[0_30px_80px_rgba(44,26,14,0.35)]">
-              <h3 className="text-2xl font-semibold text-[#2C1A0E]">{selectedJob.title}</h3>
-              <p className="mt-2 text-sm text-[#2C1A0E]/70">{selectedJob.company} - {selectedJob.location}</p>
-              <p className="mt-4 text-sm text-[#2C1A0E]/80">{selectedJob.description}</p>
+        {selectedJob ? (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(10,15,20,0.5)] p-6">
+            <div className="w-full max-w-xl rounded-[1.75rem] border border-[var(--line)] bg-[rgba(255,250,244,0.98)] p-8 shadow-[0_30px_80px_rgba(18,27,36,0.3)]">
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div>
+                  <p className="jobify-eyebrow">{selectedJob.company}</p>
+                  <h3 className="mt-3 text-2xl font-semibold">{selectedJob.title}</h3>
+                </div>
+                <span className="jobify-tag">{selectedJob.type}</span>
+              </div>
+              <p className="mt-2 text-sm text-[var(--text-muted)]">
+                {selectedJob.location} - {selectedJob.salary}
+              </p>
+              <p className="mt-4 text-sm leading-7 text-[var(--text-muted)]">
+                {selectedJob.description}
+              </p>
               <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center">
-                <a className="inline-flex items-center justify-center rounded-md bg-[#C1440E] px-4 py-2 text-sm font-semibold text-[#F2E8D9]" href={`mailto:recruit@${selectedJob.company.replace(/\s+/g, "").toLowerCase()}.uz?subject=${encodeURIComponent(selectedJob.title)}`}>
+                <a
+                  className="jobify-btn-primary"
+                  href={`mailto:recruit@${selectedJob.company.replace(/\s+/g, "").toLowerCase()}.uz?subject=${encodeURIComponent(selectedJob.title)}`}
+                >
                   Email orqali
                 </a>
-                <a className="inline-flex items-center justify-center rounded-md border border-[#2C1A0E] px-4 py-2 text-sm font-semibold text-[#2C1A0E]" href={`https://t.me/${selectedJob.telegram.replace(/^@/, "")}`} target="_blank" rel="noreferrer">
+                <a
+                  className="jobify-btn-secondary"
+                  href={`https://t.me/${selectedJob.telegram.replace(/^@/, "")}`}
+                  target="_blank"
+                  rel="noreferrer"
+                >
                   Telegram
                 </a>
-                <button onClick={closeJob} className="inline-flex items-center justify-center rounded-md border border-[#2C1A0E] px-4 py-2 text-sm font-semibold text-[#2C1A0E]">
+                <button onClick={closeJob} className="jobify-btn-secondary">
                   Yopish
                 </button>
               </div>
             </div>
           </div>
-        )}
+        ) : null}
 
-        {showEmployerModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-6">
-            <div className="w-full max-w-lg rounded-2xl bg-[#FAF6F0] p-8 shadow-[0_30px_80px_rgba(44,26,14,0.35)]">
-              <h3 className="text-2xl font-semibold text-[#2C1A0E]">Ish beruvchi kirishini so'rash</h3>
-              <p className="mt-2 text-sm text-[#2C1A0E]/70">Formani to'ldiring, biz siz bilan bog'lanamiz.</p>
-              <form onSubmit={submitEmployerRequest} className="mt-4 space-y-4">
-                <input required placeholder="Kompaniya nomi" className="w-full border border-[#2C1A0E]/10 px-3 py-2" />
-                <input required placeholder="Email" type="email" className="w-full border border-[#2C1A0E]/10 px-3 py-2" />
-                <textarea placeholder="Qisqacha ma'lumot" className="w-full border border-[#2C1A0E]/10 px-3 py-2" />
+        {showEmployerModal ? (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(10,15,20,0.5)] p-6">
+            <div className="w-full max-w-lg rounded-[1.75rem] border border-[var(--line)] bg-[rgba(255,250,244,0.98)] p-8 shadow-[0_30px_80px_rgba(18,27,36,0.3)]">
+              <h3 className="text-2xl font-semibold">Ish beruvchi kirishini so'rash</h3>
+              <p className="jobify-lead mt-2 text-sm">Formani to'ldiring, biz siz bilan bog'lanamiz.</p>
+              <form onSubmit={submitEmployerRequest} className="mt-5 space-y-4">
+                <input required placeholder="Kompaniya nomi" className="jobify-input" />
+                <input required placeholder="Email" type="email" className="jobify-input" />
+                <textarea placeholder="Qisqacha ma'lumot" className="jobify-input jobify-textarea" />
                 <div className="flex justify-end gap-3">
-                  <button type="button" onClick={() => setShowEmployerModal(false)} className="rounded-md border border-[#2C1A0E] px-4 py-2 text-sm">Bekor qilish</button>
-                  <button type="submit" className="rounded-md bg-[#C1440E] px-4 py-2 text-sm font-semibold text-[#F2E8D9]">Yuborish</button>
+                  <button
+                    type="button"
+                    onClick={() => setShowEmployerModal(false)}
+                    className="jobify-btn-secondary"
+                  >
+                    Bekor qilish
+                  </button>
+                  <button type="submit" className="jobify-btn-primary">
+                    Yuborish
+                  </button>
                 </div>
               </form>
             </div>
           </div>
-        )}
+        ) : null}
       </div>
     </div>
   );
