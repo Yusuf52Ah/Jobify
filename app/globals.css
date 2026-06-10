@@ -220,3 +220,46 @@ a {
   text-transform: uppercase;
   color: var(--brand);
 }
+
+@media (max-width: 640px) {
+  body {
+    font-size: 15px;
+  }
+
+  .jobify-eyebrow {
+    font-size: 0.68rem;
+    letter-spacing: 0.18em;
+  }
+
+  .jobify-lead {
+    font-size: 0.95rem;
+    line-height: 1.7;
+  }
+
+  .jobify-label {
+    font-size: 0.7rem;
+    letter-spacing: 0.14em;
+  }
+
+  .jobify-input {
+    font-size: 0.94rem;
+    padding: 0.9rem 0.95rem;
+  }
+
+  .jobify-btn-primary,
+  .jobify-btn-secondary {
+    font-size: 0.72rem;
+    letter-spacing: 0.11em;
+    padding: 0.88rem 1.1rem;
+  }
+
+  .jobify-chip,
+  .jobify-tag {
+    font-size: 0.68rem;
+    letter-spacing: 0.1em;
+  }
+
+  .jobify-stat p:first-child {
+    font-size: 1.45rem;
+  }
+}
