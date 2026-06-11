@@ -88,7 +88,7 @@ export default function RegisterPage() {
       <div className="mx-auto grid max-w-6xl gap-8 lg:grid-cols-[1.08fr_0.92fr] lg:items-start">
         <section className="jobify-panel p-8 sm:p-10">
           <div className="flex items-center gap-4">
-            <JobifyLogo size={96} className="h-24 w-24 bg-[rgba(255,250,244,0.9)] p-2" />
+            <JobifyLogo size={96} className="shrink-0" />
             <div>
               <p className="jobify-eyebrow">Jobify</p>
               <p className="text-sm text-[var(--text-muted)]">O'zbekistondagi ish e'lonlari platformasi</p>

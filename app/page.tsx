@@ -16,7 +16,7 @@ import {
   serverTimestamp,
 } from "firebase/firestore";
 import { auth, db } from "../lib/firebase";
-import { isAdminEmail } from "../lib/admin";
+import { getPrimaryAdminEmail, isAdminEmail } from "../lib/admin";
 import { JobifyLogo } from "../components/JobifyLogo";
 import { UserAvatar } from "../components/UserAvatar";
 
@@ -133,8 +133,10 @@ export default function Home() {
   const [newJob, setNewJob] = useState<Omit<Job, "id">>(emptyJob);
   const [jobMessage, setJobMessage] = useState<string | null>(null);
   const [employerMessage, setEmployerMessage] = useState<string | null>(null);
+  const [employerRequestLoading, setEmployerRequestLoading] = useState(false);
   const [user, setUser] = useState<User | null>(auth.currentUser);
   const isAdmin = isAdminEmail(user?.email);
+  const adminEmail = getPrimaryAdminEmail();
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => setUser(currentUser));
@@ -231,6 +233,11 @@ export default function Home() {
   }
 
   async function deleteJob(id: string) {
+    if (!isAdmin) {
+      setJobMessage("E'lonlarni faqat sizning hisobingizdan o'chirish mumkin.");
+      return;
+    }
+
     await deleteDoc(doc(db, "jobs", id));
     setSavedJobs((current) => current.filter((savedId) => savedId !== id));
 
@@ -239,14 +246,71 @@ export default function Home() {
     }
   }
 
-  function submitEmployerRequest(e: React.FormEvent<HTMLFormElement>) {
+  async function submitEmployerRequest(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    setShowEmployerModal(false);
-    setEmployerMessage("So'rovingiz qabul qilindi. Jamoamiz tez orada bog'lanadi.");
+
+    const formData = new FormData(e.currentTarget);
+    const payload = {
+      company: String(formData.get("company") || "").trim(),
+      email: String(formData.get("email") || "").trim(),
+      telegram: String(formData.get("telegram") || "").trim(),
+      details: String(formData.get("details") || "").trim(),
+    };
+
+    if (!payload.company || !payload.email) {
+      setEmployerMessage("Kompaniya nomi va email majburiy.");
+      return;
+    }
+
+    if (!adminEmail) {
+      setEmployerMessage("Admin email sozlanmagan.");
+      return;
+    }
+
+    setEmployerRequestLoading(true);
+    setEmployerMessage(null);
+
+    try {
+      const text = [
+        "Salom, Jobify orqali e'lon joylash so'rovi bor.",
+        "",
+        `Kompaniya: ${payload.company}`,
+        `Email: ${payload.email}`,
+        payload.telegram ? `Telegram: ${payload.telegram}` : null,
+        payload.details ? `Izoh: ${payload.details}` : null,
+      ]
+        .filter(Boolean)
+        .join("\n");
+
+      const subject = encodeURIComponent(`Jobify e'lon so'rovi: ${payload.company}`);
+      const body = encodeURIComponent(text);
+      const mailtoUrl = `mailto:${adminEmail}?subject=${subject}&body=${body}`;
+      const emailWindow = window.open(mailtoUrl, "_self");
+
+      if (!emailWindow) {
+        window.location.href = mailtoUrl;
+      }
+
+      setShowEmployerModal(false);
+      setEmployerMessage("Email ilovasi ochildi. So'rovni yuboring.");
+      e.currentTarget.reset();
+    } catch (error) {
+      console.error("Employer request error", error);
+      setEmployerMessage(
+        error instanceof Error ? error.message : "Emailni ochishda xatolik yuz berdi.",
+      );
+    } finally {
+      setEmployerRequestLoading(false);
+    }
   }
 
   async function handleAddJob(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+
+    if (!isAdmin) {
+      setJobMessage("E'lon qo'shish faqat sizning emailingiz bilan mumkin.");
+      return;
+    }
 
     const trimmedJob = {
       title: newJob.title.trim(),
@@ -316,7 +380,7 @@ export default function Home() {
             </nav>
 
             <div className="order-first flex items-center gap-3">
-              <JobifyLogo size={76} className="h-20 w-20 bg-[rgba(255,250,244,0.88)] p-1.5" />
+              <JobifyLogo size={76} className="shrink-0" />
               <div>
                 <p className="text-sm font-semibold uppercase tracking-[0.18em]">Jobify</p>
                 <p className="text-xs uppercase tracking-[0.18em] text-[var(--text-muted)]">
@@ -359,7 +423,7 @@ export default function Home() {
                     Kirish
                   </Link>
                   <Link
-                    className="rounded-full bg-[var(--text-ink)] px-5 py-3 text-sm font-semibold text-[#fff6ec] transition hover:bg-[var(--brand)]"
+                    className="rounded-full border border-[var(--line)] px-5 py-3 text-sm font-semibold transition hover:border-[var(--brand)] hover:text-[var(--brand)]"
                     href="/register"
                   >
                     Ro'yxatdan o'tish
@@ -575,14 +639,14 @@ export default function Home() {
               <p className="jobify-eyebrow">Ish beruvchi</p>
               <h3 className="mt-4 text-2xl font-semibold">Jamoangiz uchun e'lon joylang</h3>
               <p className="jobify-lead mt-4 text-sm">
-                Kompaniya haqida aniq ma'lumot, maosh oralig'i va Telegram kontakt
-                qo'shilsa, nomzodlar tezroq murojaat qiladi.
+                Kompaniya haqida aniq ma'lumot, maosh oralig'i va email kontakt
+                qoldirsangiz, men uni ko'rib chiqaman va o'zim joylayman.
               </p>
               <button
                 onClick={() => setShowEmployerModal(true)}
                 className="mt-6 inline-flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.14em] text-[var(--brand)]"
               >
-                Ish beruvchi kirishini so'rang
+                Email orqali yozish
               </button>
               {employerMessage ? (
                 <p className="mt-4 rounded-[1rem] border border-[var(--line)] bg-[rgba(31,111,109,0.08)] px-4 py-4 text-sm text-[var(--text-ink)]">
@@ -607,64 +671,100 @@ export default function Home() {
 
             <div id="add-job" className="jobify-panel p-8">
               <p className="jobify-eyebrow">Yangi ish qo'shish</p>
-              <h3 className="mt-4 text-2xl font-semibold">E'loningizni yarating</h3>
+              <h3 className="mt-4 text-2xl font-semibold">
+                {isAdmin ? "E'loningizni yarating" : "E'lon qo'shish uchun menga yozing"}
+              </h3>
               <div className="mt-4 rounded-[1rem] border border-[var(--line)] bg-[rgba(31,111,109,0.06)] px-4 py-4 text-sm text-[var(--text-muted)]">
-                Har bir yangi e'lon uchun to'lov:{" "}
-                <span className="font-semibold text-[var(--text-ink)]">20 000 so'm</span>.
-                To'lov tasdiqlangach e'lon joylanadi.
+                {isAdmin ? (
+                  <>
+                    Har bir yangi e'lon uchun to'lov:{" "}
+                    <span className="font-semibold text-[var(--text-ink)]">20 000 so'm</span>.
+                    To'lov tasdiqlangach e'lon joylanadi.
+                  </>
+                ) : (
+                  <>
+                    E'lon qo'shish va o'chirish faqat administrator hisobidan amalga oshiriladi.
+                    Formani Telegramga yuborsangiz, men kirib e'lonni joylayman.
+                  </>
+                )}
               </div>
-              <form onSubmit={handleAddJob} className="mt-6 space-y-4">
-                <input
-                  value={newJob.title}
-                  onChange={(e) => setNewJob({ ...newJob, title: e.target.value })}
-                  placeholder="Lavozim nomi"
-                  className="jobify-input"
-                />
-                <input
-                  value={newJob.company}
-                  onChange={(e) => setNewJob({ ...newJob, company: e.target.value })}
-                  placeholder="Kompaniya nomi"
-                  className="jobify-input"
-                />
-                <input
-                  value={newJob.location}
-                  onChange={(e) => setNewJob({ ...newJob, location: e.target.value })}
-                  placeholder="Joylashuv"
-                  className="jobify-input"
-                />
-                <div className="grid gap-4 sm:grid-cols-2">
+
+              {isAdmin ? (
+                <form onSubmit={handleAddJob} className="mt-6 space-y-4">
                   <input
-                    value={newJob.type}
-                    onChange={(e) => setNewJob({ ...newJob, type: e.target.value })}
-                    placeholder="Ish turi"
+                    value={newJob.title}
+                    onChange={(e) => setNewJob({ ...newJob, title: e.target.value })}
+                    placeholder="Lavozim nomi"
                     className="jobify-input"
                   />
                   <input
-                    value={newJob.salary}
-                    onChange={(e) => setNewJob({ ...newJob, salary: e.target.value })}
-                    placeholder="Maosh"
+                    value={newJob.company}
+                    onChange={(e) => setNewJob({ ...newJob, company: e.target.value })}
+                    placeholder="Kompaniya nomi"
                     className="jobify-input"
                   />
+                  <input
+                    value={newJob.location}
+                    onChange={(e) => setNewJob({ ...newJob, location: e.target.value })}
+                    placeholder="Joylashuv"
+                    className="jobify-input"
+                  />
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <input
+                      value={newJob.type}
+                      onChange={(e) => setNewJob({ ...newJob, type: e.target.value })}
+                      placeholder="Ish turi"
+                      className="jobify-input"
+                    />
+                    <input
+                      value={newJob.salary}
+                      onChange={(e) => setNewJob({ ...newJob, salary: e.target.value })}
+                      placeholder="Maosh"
+                      className="jobify-input"
+                    />
+                  </div>
+                  <input
+                    value={newJob.telegram}
+                    onChange={(e) => setNewJob({ ...newJob, telegram: e.target.value })}
+                    placeholder="Telegram akkaunt: @username"
+                    className="jobify-input"
+                  />
+                  <textarea
+                    value={newJob.description}
+                    onChange={(e) => setNewJob({ ...newJob, description: e.target.value })}
+                    placeholder="Qisqacha ish tavsifi"
+                    className="jobify-input jobify-textarea"
+                  />
+                  {jobMessage ? (
+                    <p className="text-sm text-[var(--brand)]">{jobMessage}</p>
+                  ) : null}
+                  <button type="submit" className="jobify-btn-primary w-full">
+                    Ish e'lonini qo'shish
+                  </button>
+                </form>
+              ) : (
+                <div className="mt-6 space-y-4">
+                  <p className="text-sm leading-7 text-[var(--text-muted)]">
+                    Agar sizda e'lon bo'lsa, kompaniya nomi, lavozim, maosh va email kontaktni
+                    yuboring. Men uni ko'rib chiqib qo'lda joylayman.
+                  </p>
+                  {adminEmail ? (
+                    <a
+                      href={`mailto:${adminEmail}`}
+                      className="jobify-btn-primary w-full"
+                    >
+                      Emailga yozish
+                    </a>
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={() => setShowEmployerModal(true)}
+                    className="jobify-btn-secondary w-full"
+                  >
+                    So'rov yuborish
+                  </button>
                 </div>
-                <input
-                  value={newJob.telegram}
-                  onChange={(e) => setNewJob({ ...newJob, telegram: e.target.value })}
-                  placeholder="Telegram akkaunt: @username"
-                  className="jobify-input"
-                />
-                <textarea
-                  value={newJob.description}
-                  onChange={(e) => setNewJob({ ...newJob, description: e.target.value })}
-                  placeholder="Qisqacha ish tavsifi"
-                  className="jobify-input jobify-textarea"
-                />
-                {jobMessage ? (
-                  <p className="text-sm text-[var(--brand)]">{jobMessage}</p>
-                ) : null}
-                <button type="submit" className="jobify-btn-primary w-full">
-                  Ish e'lonini qo'shish
-                </button>
-              </form>
+              )}
             </div>
           </aside>
         </main>
@@ -711,12 +811,24 @@ export default function Home() {
         {showEmployerModal ? (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(10,15,20,0.5)] p-6">
             <div className="w-full max-w-lg rounded-[1.75rem] border border-[var(--line)] bg-[rgba(255,250,244,0.98)] p-8 shadow-[0_30px_80px_rgba(18,27,36,0.3)]">
-              <h3 className="text-2xl font-semibold">Ish beruvchi kirishini so'rash</h3>
-              <p className="jobify-lead mt-2 text-sm">Formani to'ldiring, biz siz bilan bog'lanamiz.</p>
+              <h3 className="text-2xl font-semibold">Email orqali so'rov yuborish</h3>
+              <p className="jobify-lead mt-2 text-sm">
+                Kompaniya ma'lumotini yuboring, men emailimda ko'raman va e'lonni o'zim
+                joylayman.
+              </p>
               <form onSubmit={submitEmployerRequest} className="mt-5 space-y-4">
-                <input required placeholder="Kompaniya nomi" className="jobify-input" />
-                <input required placeholder="Email" type="email" className="jobify-input" />
-                <textarea placeholder="Qisqacha ma'lumot" className="jobify-input jobify-textarea" />
+                <input name="company" required placeholder="Kompaniya nomi" className="jobify-input" />
+                <input name="email" required placeholder="Email" type="email" className="jobify-input" />
+                <input
+                  name="telegram"
+                  placeholder="Email yoki aloqa telefoni"
+                  className="jobify-input"
+                />
+                <textarea
+                  name="details"
+                  placeholder="Qisqacha ma'lumot"
+                  className="jobify-input jobify-textarea"
+                />
                 <div className="flex justify-end gap-3">
                   <button
                     type="button"
@@ -725,8 +837,8 @@ export default function Home() {
                   >
                     Bekor qilish
                   </button>
-                  <button type="submit" className="jobify-btn-primary">
-                    Yuborish
+                  <button type="submit" disabled={employerRequestLoading} className="jobify-btn-primary">
+                    {employerRequestLoading ? "Ochilmoqda..." : "Emailni ochish"}
                   </button>
                 </div>
               </form>

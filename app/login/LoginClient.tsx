@@ -95,7 +95,7 @@ export function LoginClient() {
         <aside className="space-y-6">
           <div className="jobify-panel p-8">
             <div className="flex items-center gap-4">
-              <JobifyLogo size={96} className="h-24 w-24 bg-[rgba(255,250,244,0.9)] p-2" />
+              <JobifyLogo size={96} className="shrink-0" />
               <div>
                 <p className="jobify-eyebrow">Jobify</p>
                 <p className="text-sm text-[var(--text-muted)]">Ish izlash va e'lonlar markazi</p>

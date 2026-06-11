@@ -1,73 +1,79 @@
+import { useId } from "react";
+
 type JobifyLogoProps = {
   size?: number;
   className?: string;
 };
 
 export function JobifyLogo({ size = 96, className = "" }: JobifyLogoProps) {
+  const reactId = useId().replace(/[^a-zA-Z0-9_-]/g, "");
+  const prefix = `jobify-logo-${reactId}`;
+
   return (
     <svg
       width={size}
       height={size}
-      viewBox="0 0 96 96"
+      viewBox="0 0 128 128"
       role="img"
-      aria-label="Jobify logosi"
-      className={`block ${className}`.trim()}
+      aria-label="Jobify logo"
+      className={`block shrink-0 ${className}`.trim()}
     >
       <defs>
-        <linearGradient id="jobifySuitcase" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#2da7e6" />
-          <stop offset="52%" stopColor="#1468a8" />
-          <stop offset="100%" stopColor="#43d16b" />
+        <linearGradient id={`${prefix}-suitcase`} x1="10" y1="10" x2="118" y2="118" gradientUnits="userSpaceOnUse">
+          <stop offset="0%" stopColor="#173D6A" />
+          <stop offset="55%" stopColor="#1468A8" />
+          <stop offset="100%" stopColor="#43D16B" />
         </linearGradient>
-        <linearGradient id="jobifyArrow" x1="10%" y1="10%" x2="90%" y2="90%">
-          <stop offset="0%" stopColor="#eef8ff" />
-          <stop offset="100%" stopColor="#d8fff0" />
+        <linearGradient id={`${prefix}-arrow`} x1="36" y1="38" x2="92" y2="90" gradientUnits="userSpaceOnUse">
+          <stop offset="0%" stopColor="#F7FBFF" />
+          <stop offset="100%" stopColor="#D8FFF0" />
         </linearGradient>
-        <filter id="jobifyShadow" x="-20%" y="-20%" width="140%" height="140%">
-          <feDropShadow dx="0" dy="3" stdDeviation="3" floodColor="#0f172a" floodOpacity="0.18" />
+        <filter id={`${prefix}-shadow`} x="-20%" y="-20%" width="140%" height="140%">
+          <feDropShadow dx="0" dy="4" stdDeviation="5" floodColor="#0F172A" floodOpacity="0.18" />
         </filter>
       </defs>
 
-      <rect x="13" y="18" width="70" height="56" rx="14" fill="#ffffff" filter="url(#jobifyShadow)" />
+      <rect x="10" y="10" width="108" height="108" rx="28" fill={`url(#${prefix}-suitcase)`} filter={`url(#${prefix}-shadow)`} />
       <path
-        d="M24 41c0-7 5.5-12 12.2-12h23.6C66.5 29 72 34 72 41v15c0 6.7-5.2 12-11.8 12H35.8C29.2 68 24 62.7 24 56V41Z"
-        fill="url(#jobifySuitcase)"
+        d="M35 55C35 46.1634 42.1634 39 51 39H77C85.8366 39 93 46.1634 93 55V77C93 85.8366 85.8366 93 77 93H51C42.1634 93 35 85.8366 35 77V55Z"
+        fill="#0F2747"
+        opacity="0.92"
       />
       <path
-        d="M34 31.5c0-4.6 3.7-8.3 8.3-8.3h11.4c4.6 0 8.3 3.7 8.3 8.3v3.7H34v-3.7Z"
-        fill="#173d6a"
-        opacity="0.95"
+        d="M42 49C42 44.5817 45.5817 41 50 41H78C82.4183 41 86 44.5817 86 49V51H42V49Z"
+        fill="#EAF9FF"
+        opacity="0.96"
       />
       <path
-        d="M33 40.5h31.4l-2.6 13.2c-.4 2-2.1 3.5-4.2 3.5H39.8c-2.1 0-3.8-1.5-4.2-3.5L33 40.5Z"
-        fill="#f7fbff"
-        opacity="0.95"
+        d="M41 56H87L83.9 70.4C83 74.7 79.2 78 74.8 78H53.2C48.8 78 45 74.7 44.1 70.4L41 56Z"
+        fill={`url(#${prefix}-arrow)`}
       />
       <path
-        d="M38 46c5.5 0 8.7 4 12 7.7 2.2 2.5 4.7 4.8 8.2 4.8"
+        d="M46 61.5C53.8 61.5 58.2 66.8 63.3 72.2C66.9 76 70.8 78.8 76.5 78.8"
         fill="none"
-        stroke="#2a7bd6"
-        strokeWidth="6"
+        stroke="#2A7BD6"
+        strokeWidth="7.5"
         strokeLinecap="round"
       />
       <path
-        d="M45 60c-1.8 0-3.1-1.2-3.1-2.8 0-1.1.6-2 1.5-2.7l5.7-4.4"
+        d="M57 72.2C55.1 72.2 53.7 70.8 53.7 68.9C53.7 67.7 54.3 66.7 55.4 65.7L61.9 60.5"
         fill="none"
-        stroke="#ffffff"
-        strokeWidth="4"
+        stroke="#FFFFFF"
+        strokeWidth="5.2"
         strokeLinecap="round"
         strokeLinejoin="round"
       />
       <path
-        d="M52 50.5l9.2-12.4h-6.2l15.6-10.2-3.4 7.2h7.4L59.8 53.4l-1.4-4.2z"
-        fill="url(#jobifyArrow)"
+        d="M66 66.1L77.4 52.5H70.3L89.5 40.8L85.2 49.1H93L78 80.8L76.2 75.5Z"
+        fill="#EAF9FF"
+        opacity="0.99"
       />
-      <circle cx="72" cy="28" r="7.5" fill="#42c94b" />
+      <circle cx="88" cy="38" r="8.5" fill="#42C94B" />
       <path
-        d="M69 28.1h6M72.1 25l-3.2 3.2 3.2 3.2"
+        d="M84.6 38H91.4M88 34.6L84.6 38L88 41.4"
         fill="none"
-        stroke="#ffffff"
-        strokeWidth="2.3"
+        stroke="#FFFFFF"
+        strokeWidth="2.8"
         strokeLinecap="round"
         strokeLinejoin="round"
       />
