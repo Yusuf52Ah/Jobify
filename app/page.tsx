@@ -16,7 +16,7 @@ import {
   serverTimestamp,
 } from "firebase/firestore";
 import { auth, db } from "../lib/firebase";
-import { getPrimaryAdminEmail, isAdminEmail } from "../lib/admin";
+import { getAdminTelegramUsername, isAdminEmail } from "../lib/admin";
 import { JobifyLogo } from "../components/JobifyLogo";
 import { UserAvatar } from "../components/UserAvatar";
 
@@ -136,7 +136,7 @@ export default function Home() {
   const [employerRequestLoading, setEmployerRequestLoading] = useState(false);
   const [user, setUser] = useState<User | null>(auth.currentUser);
   const isAdmin = isAdminEmail(user?.email);
-  const adminEmail = getPrimaryAdminEmail();
+  const adminTelegramUsername = getAdminTelegramUsername();
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => setUser(currentUser));
@@ -252,18 +252,17 @@ export default function Home() {
     const formData = new FormData(e.currentTarget);
     const payload = {
       company: String(formData.get("company") || "").trim(),
-      email: String(formData.get("email") || "").trim(),
       telegram: String(formData.get("telegram") || "").trim(),
       details: String(formData.get("details") || "").trim(),
     };
 
-    if (!payload.company || !payload.email) {
-      setEmployerMessage("Kompaniya nomi va email majburiy.");
+    if (!payload.company || !payload.telegram) {
+      setEmployerMessage("Kompaniya nomi va Telegram majburiy.");
       return;
     }
 
-    if (!adminEmail) {
-      setEmployerMessage("Admin email sozlanmagan.");
+    if (!adminTelegramUsername) {
+      setEmployerMessage("Telegram username sozlanmagan.");
       return;
     }
 
@@ -275,29 +274,27 @@ export default function Home() {
         "Salom, Jobify orqali e'lon joylash so'rovi bor.",
         "",
         `Kompaniya: ${payload.company}`,
-        `Email: ${payload.email}`,
         payload.telegram ? `Telegram: ${payload.telegram}` : null,
         payload.details ? `Izoh: ${payload.details}` : null,
       ]
         .filter(Boolean)
         .join("\n");
 
-      const subject = encodeURIComponent(`Jobify e'lon so'rovi: ${payload.company}`);
-      const body = encodeURIComponent(text);
-      const mailtoUrl = `mailto:${adminEmail}?subject=${subject}&body=${body}`;
-      const emailWindow = window.open(mailtoUrl, "_self");
+      const telegramUrl = `https://t.me/${adminTelegramUsername}`;
+      const telegramWindow = window.open(telegramUrl, "_blank", "noopener,noreferrer");
 
-      if (!emailWindow) {
-        window.location.href = mailtoUrl;
+      if (!telegramWindow) {
+        throw new Error("Telegram oynasini ochib bo'lmadi.");
       }
 
+      await navigator.clipboard.writeText(text);
       setShowEmployerModal(false);
-      setEmployerMessage("Email ilovasi ochildi. So'rovni yuboring.");
+      setEmployerMessage("Telegram ochildi. Xabar matnini yuboring.");
       e.currentTarget.reset();
     } catch (error) {
       console.error("Employer request error", error);
       setEmployerMessage(
-        error instanceof Error ? error.message : "Emailni ochishda xatolik yuz berdi.",
+        error instanceof Error ? error.message : "Telegramni ochishda xatolik yuz berdi.",
       );
     } finally {
       setEmployerRequestLoading(false);
@@ -639,14 +636,14 @@ export default function Home() {
               <p className="jobify-eyebrow">Ish beruvchi</p>
               <h3 className="mt-4 text-2xl font-semibold">Jamoangiz uchun e'lon joylang</h3>
               <p className="jobify-lead mt-4 text-sm">
-                Kompaniya haqida aniq ma'lumot, maosh oralig'i va email kontakt
+                Kompaniya haqida aniq ma'lumot, maosh oralig'i va Telegram kontakt
                 qoldirsangiz, men uni ko'rib chiqaman va o'zim joylayman.
               </p>
               <button
                 onClick={() => setShowEmployerModal(true)}
                 className="mt-6 inline-flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.14em] text-[var(--brand)]"
               >
-                Email orqali yozish
+                Telegram orqali yozish
               </button>
               {employerMessage ? (
                 <p className="mt-4 rounded-[1rem] border border-[var(--line)] bg-[rgba(31,111,109,0.08)] px-4 py-4 text-sm text-[var(--text-ink)]">
@@ -745,15 +742,17 @@ export default function Home() {
               ) : (
                 <div className="mt-6 space-y-4">
                   <p className="text-sm leading-7 text-[var(--text-muted)]">
-                    Agar sizda e'lon bo'lsa, kompaniya nomi, lavozim, maosh va email kontaktni
+                    Agar sizda e'lon bo'lsa, kompaniya nomi, lavozim, maosh va Telegram kontaktni
                     yuboring. Men uni ko'rib chiqib qo'lda joylayman.
                   </p>
-                  {adminEmail ? (
+                  {adminTelegramUsername ? (
                     <a
-                      href={`mailto:${adminEmail}`}
+                      href={`https://t.me/${adminTelegramUsername}`}
+                      target="_blank"
+                      rel="noreferrer"
                       className="jobify-btn-primary w-full"
                     >
-                      Emailga yozish
+                      Telegramga yozish
                     </a>
                   ) : null}
                   <button
@@ -811,17 +810,17 @@ export default function Home() {
         {showEmployerModal ? (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(10,15,20,0.5)] p-6">
             <div className="w-full max-w-lg rounded-[1.75rem] border border-[var(--line)] bg-[rgba(255,250,244,0.98)] p-8 shadow-[0_30px_80px_rgba(18,27,36,0.3)]">
-              <h3 className="text-2xl font-semibold">Email orqali so'rov yuborish</h3>
+              <h3 className="text-2xl font-semibold">Telegram orqali so'rov yuborish</h3>
               <p className="jobify-lead mt-2 text-sm">
-                Kompaniya ma'lumotini yuboring, men emailimda ko'raman va e'lonni o'zim
+                Kompaniya ma'lumotini yuboring, men Telegramda ko'raman va e'lonni o'zim
                 joylayman.
               </p>
               <form onSubmit={submitEmployerRequest} className="mt-5 space-y-4">
                 <input name="company" required placeholder="Kompaniya nomi" className="jobify-input" />
-                <input name="email" required placeholder="Email" type="email" className="jobify-input" />
                 <input
                   name="telegram"
-                  placeholder="Email yoki aloqa telefoni"
+                  required
+                  placeholder="Telegram username yoki aloqa telefoni"
                   className="jobify-input"
                 />
                 <textarea
@@ -838,7 +837,7 @@ export default function Home() {
                     Bekor qilish
                   </button>
                   <button type="submit" disabled={employerRequestLoading} className="jobify-btn-primary">
-                    {employerRequestLoading ? "Ochilmoqda..." : "Emailni ochish"}
+                    {employerRequestLoading ? "Ochilmoqda..." : "Telegramni ochish"}
                   </button>
                 </div>
               </form>
